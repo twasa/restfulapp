@@ -1,0 +1,36 @@
+version: '2'
+
+services:
+  # MySQL
+  employee_mysql:
+    image: mysql:5.7.36
+    container_name: employee_mysql
+    restart: unless-stopped
+    ports:
+      - 3306:3306
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - employee_mysql:/var/lib/mysql:rw
+      - ./.my.cnf:/root/.my.cnf:ro
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+
+  employee_app:
+    build:
+      context: .
+    container_name: employee_app
+    restart: always
+    ports:
+      - ${SRV_PORT}:${SRV_PORT}
+    command: ["server"]
+    environment:
+      - DB_ADDRESS=${DB_ADDRESS}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_ACCOUNT=${DB_ACCOUNT}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - SRV_PORT=${SRV_PORT}
+      - FLASK_APP=main.py
+
+volumes:
+  employee_mysql:

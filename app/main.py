@@ -1,23 +1,31 @@
-from flask import Flask, request, jsonify, make_response
-from flask_sqlalchemy import SQLAlchemy
+import os, sys
+
+from flask import Flask
+from flask import request, jsonify, make_response
 from flask_marshmallow import Marshmallow
 from marshmallow.exceptions import ValidationError
 from sqlalchemy.exc import IntegrityError
+from flask_sqlalchemy import SQLAlchemy
+
+base_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, base_dir)
+
+import config as app_config
+
 
 app = Flask(__name__)
-ma = Marshmallow()
-
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://restful:2QlLm>A81bsz{@127.0.0.1:3306/restful'
+app.config['SQLALCHEMY_DATABASE_URI'] = app_config.SQLALCHEMY_DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
 
-# Model
+db = SQLAlchemy(app)
+ma = Marshmallow(app)
+
 class Employee(db.Model):
     __tablename__ = "employee"
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(254), unique=True, nullable=False)
     mobile = db.Column(db.String(15), unique=True, nullable=False)
-    position = db.relationship("Position", back_populates="employee", uselist=False)
+    position = db.relationship("Position", back_populates="employee", uselist=False, cascade="all,delete")
 
     def __init__(self, email, mobile):
         self.email = email
@@ -42,6 +50,9 @@ class Position(db.Model):
     def __repr__(self):
         return f"id: {self.title}, email: {self.department}"
 
+db.create_all()
+
+
 class EmployeeSchema(ma.Schema):
     class Meta:
         model = Employee
@@ -55,10 +66,7 @@ class PositionSchema(ma.Schema):
         model = Position
     title = ma.Str()
     department = ma.Str()
-    # employee_id = ma.Integer()
 
-
-db.create_all()
 
 @app.route("/employee", methods=["POST"])
 def create_employee():
@@ -114,16 +122,42 @@ def get_employee_by_id(id):
 @app.route('/employee/<id>', methods=['PUT'])
 def update_employee_by_id(id):
     data = request.get_json()
+    employee_schema = EmployeeSchema()
+    try:
+        employee_schema.load(data)
+    except ValidationError:
+        app.logger.warning("Invalid data")
+        return make_response(jsonify({"error": "Invalid data"}), 400)
+
     employee = Employee.query.get(id)
-    if data.get('email'):
-        employee.email = data['email']
-    if data.get('mobile'):
-        employee.mobile = data['mobile']
-    db.session.add(employee)
+    if not employee:
+        return make_response(jsonify({'error': 'employee not found'}), 400)
+
+    if email := data.get('email'):
+        employee.email = email
+
+    if mobile:= data.get('mobile'):
+        employee.mobile = mobile
+
     db.session.commit()
+
+    if position_data := data.get('position'):
+        position_schema = PositionSchema()
+        try:
+            position_schema.load(position_data)
+        except ValidationError:
+            app.logger.warning("Invalid data")
+            return make_response(jsonify({"error": "Invalid data"}), 400)
+        position = Position.query.filter_by(employee_id=id).first()
+        if department := position_data.get('department'):
+            position.department = department
+        if title := position_data.get('title'):
+            position.title = title
+        db.session.commit()
+
     employee_schema = EmployeeSchema()
     employee = employee_schema.dump(employee)
-    return make_response(jsonify({"employee": employee}))
+    return make_response(jsonify(employee))
 
 
 @app.route('/employee/<id>', methods=['DELETE'])
@@ -145,4 +179,4 @@ def internal_error(error):
     return make_response(jsonify({'error': 'Internal server error'}), 500)
 
 if __name__ == "__main__":
-    app.run(debug=False)
+    app.run(port=app_config.srv_port, debug=False, host="0.0.0.0")
