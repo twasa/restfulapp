@@ -1,4 +1,4 @@
-# micro-account
+# Employee RESTful API
 
 ![python 3.9.7](https://img.shields.io/badge/python-3.9.7-blue.svg)
 ![django 2.2.24](https://img.shields.io/badge/django-2.2.24-blue.svg)
